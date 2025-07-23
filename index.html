@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Number Balls with GCD Web</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    html, body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: sans-serif;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    .ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 10;
+    }
+
+    .ui button {
+      margin: 4px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 8px;
+      background: #111;
+      color: #0f0;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .ui button:hover {
+      background: #222;
+    }
+
+    .tooltip {
+      position: absolute;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 12px;
+      pointer-events: none;
+      z-index: 20;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div class="ui">
+  <button onclick="addNext()">Add Next</button>
+  <button onclick="save()">💾 Save</button>
+  <button onclick="load()">📥 Load</button>
+  <button onclick="reset()">🧹 Reset</button>
+</div>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+const centerX = canvas.width / 2;
+const centerY = canvas.height / 2;
+const circleRadius = 300;
+
+let nextNum = 2;
+const balls = [];
+
+function isPrime(n) {
+  if (n < 2) return false;
+  for (let i = 2; i*i <= n; i++) {
+    if (n % i === 0) return false;
+  }
+  return true;
+}
+
+function primeFactors(n) {
+  const factors = [];
+  let d = 2;
+  while (n > 1 && d <= n) {
+    while (n % d === 0) {
+      factors.push(d);
+      n /= d;
+    }
+    d++;
+  }
+  return factors;
+}
+
+function gcd(a, b) {
+  while (b) [a, b] = [b, a % b];
+  return a;
+}
+
+function addNumber(n) {
+  const angle = (Math.random() * Math.PI * 2);
+  const x = centerX + (Math.random() * circleRadius / 1.5) * Math.cos(angle);
+  const y = centerY + (Math.random() * circleRadius / 1.5) * Math.sin(angle);
+  balls.push({
+    x, y,
+    vx: Math.random() * 2 - 1,
+    vy: Math.random() * 2 - 1,
+    label: n,
+    isPrime: isPrime(n),
+    factors: primeFactors(n),
+  });
+}
+
+function addNext() {
+  addNumber(nextNum++);
+}
+
+function save() {
+  localStorage.setItem("numberBallsData", JSON.stringify({
+    nextNum,
+    balls
+  }));
+  alert("Saved!");
+}
+
+function load() {
+  const data = JSON.parse(localStorage.getItem("numberBallsData") || "{}");
+  if (data && data.balls) {
+    balls.length = 0;
+    for (let b of data.balls) {
+      balls.push({...b});
+    }
+    nextNum = data.nextNum || 2;
+    alert("Loaded!");
+  }
+}
+
+function reset() {
+  if (confirm("Clear all balls?")) {
+    balls.length = 0;
+    nextNum = 2;
+  }
+}
+
+function drawBall(ball) {
+  ctx.beginPath();
+  ctx.fillStyle = ball.isPrime ? '#ff0066' : '#00ccff';
+  ctx.arc(ball.x, ball.y, 20, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(ball.label, ball.x, ball.y);
+}
+
+function drawLine(a, b, g) {
+  if (g <= 1) return;
+  const maxGCD = 30;
+  const opacity = Math.min(1, g / maxGCD);
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 200);
+  ctx.beginPath();
+  ctx.strokeStyle = `rgba(0,255,128,${opacity * pulse})`;
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.stroke();
+
+  // Draw GCD label at midpoint
+  const midX = (a.x + b.x) / 2;
+  const midY = (a.y + b.y) / 2;
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = '10px sans-serif';
+  ctx.fillText(g, midX, midY);
+}
+
+function keepInsideCircle(ball) {
+  const dx = ball.x - centerX;
+  const dy = ball.y - centerY;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist > circleRadius - 20) {
+    const angle = Math.atan2(dy, dx);
+    ball.x = centerX + (circleRadius - 20) * Math.cos(angle);
+    ball.y = centerY + (circleRadius - 20) * Math.sin(angle);
+    const normal = {x: dx / dist, y: dy / dist};
+    const dot = ball.vx * normal.x + ball.vy * normal.y;
+    ball.vx -= 2 * dot * normal.x;
+    ball.vy -= 2 * dot * normal.y;
+  }
+}
+
+canvas.addEventListener('mousemove', (e) => {
+  let found = false;
+  for (let b of balls) {
+    const dx = e.clientX - b.x;
+    const dy = e.clientY - b.y;
+    if (Math.sqrt(dx*dx + dy*dy) < 20) {
+      tooltip.style.left = (e.clientX + 10) + 'px';
+      tooltip.style.top = (e.clientY + 10) + 'px';
+      tooltip.style.display = 'block';
+      tooltip.textContent = b.label + ' → ' + b.factors.join(' × ');
+      found = true;
+      break;
+    }
+  }
+  if (!found) tooltip.style.display = 'none';
+});
+
+// Drag to rotate
+let dragging = false;
+let lastAngle = 0;
+
+canvas.addEventListener('mousedown', e => {
+  dragging = true;
+  lastAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+});
+canvas.addEventListener('mouseup', () => dragging = false);
+canvas.addEventListener('mouseleave', () => dragging = false);
+canvas.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
+  const delta = angle - lastAngle;
+  for (let b of balls) {
+    const dx = b.x - centerX;
+    const dy = b.y - centerY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const newAngle = Math.atan2(dy, dx) + delta;
+    b.x = centerX + dist * Math.cos(newAngle);
+    b.y = centerY + dist * Math.sin(newAngle);
+  }
+  lastAngle = angle;
+});
+
+function animate() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // GCD links
+  for (let i = 0; i < balls.length; i++) {
+    for (let j = i + 1; j < balls.length; j++) {
+      const g = gcd(balls[i].label, balls[j].label);
+      drawLine(balls[i], balls[j], g);
+    }
+  }
+
+  for (let b of balls) {
+    b.x += b.vx;
+    b.y += b.vy;
+    keepInsideCircle(b);
+    drawBall(b);
+  }
+
+  requestAnimationFrame(animate);
+}
+
+animate();
+</script>
+</body>
+</html>
